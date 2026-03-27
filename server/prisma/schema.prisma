@@ -30,6 +30,10 @@ enum AuditEventType {
   TIMESHEET_APPROVED
   TIMESHEET_REJECTED
   WORK_RECORD_CREATED
+  INVOICE_GENERATED
+  INVOICE_APPROVED
+  PAYMENT_RECEIVED
+  PAYMENT_MISMATCH
 }
 
 // ─── Organisation ────────────────────────────────────────
@@ -48,6 +52,8 @@ model Organisation {
   auditLogs                AuditLog[]
   agencyWorkRecords   WorkRecord[] @relation("AgencyWorkRecords")
   umbrellaWorkRecords WorkRecord[] @relation("UmbrellaWorkRecords")
+  agencyInvoices    Invoice[] @relation("AgencyInvoices")
+  umbrellaInvoices  Invoice[] @relation("UmbrellaInvoices")
 
   @@map("organisations")
 }
@@ -105,6 +111,7 @@ model Contractor {
   umbrella Organisation @relation("UmbrellaContractors", fields: [umbrellaId], references: [id])
   workRecords WorkRecord[]
   timesheets  Timesheet[]
+  invoices Invoice[]
 
   @@map("contractors")
 }
@@ -164,6 +171,7 @@ model WorkRecord {
 
   timesheets  Timesheet[]
   auditLogs   AuditLog[]   @relation("WorkRecordAuditLogs")
+  invoice Invoice?
 
   @@map("work_records")
 }
@@ -187,4 +195,58 @@ model Timesheet {
   contractor   Contractor @relation(fields: [contractorId], references: [id])
 
   @@map("timesheets")
+}
+
+// ─── Invoice & Payment Enums ─────────────────────────────
+
+enum InvoiceState {
+  INVOICE_GENERATED
+  INVOICE_APPROVED
+  PAYMENT_PENDING
+  PAYMENT_RECEIVED
+}
+
+// ─── Invoice ─────────────────────────────────────────────
+
+model Invoice {
+  id            String       @id @default(uuid())
+  workRecordId  String       @unique  // one invoice per work record
+  agencyId      String
+  umbrellaId    String
+  contractorId  String
+  amount        Decimal      @db.Decimal(10, 2)
+  currency      String       @default("GBP")
+  state         InvoiceState @default(INVOICE_GENERATED)
+  invoiceNumber String       @unique
+  dueDate       DateTime
+  paidAt        DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  workRecord   WorkRecord   @relation(fields: [workRecordId], references: [id])
+  agency       Organisation @relation("AgencyInvoices", fields: [agencyId], references: [id])
+  umbrella     Organisation @relation("UmbrellaInvoices", fields: [umbrellaId], references: [id])
+  contractor   Contractor   @relation(fields: [contractorId], references: [id])
+  payments     Payment[]
+
+  @@map("invoices")
+}
+
+// ─── Payment ─────────────────────────────────────────────
+
+model Payment {
+  id              String   @id @default(uuid())
+  invoiceId       String
+  amount          Decimal  @db.Decimal(10, 2)
+  currency        String   @default("GBP")
+  reference       String   @unique  // bank transfer reference
+  fromAccount     String            // agency bank account
+  status          String   @default("PENDING")  // PENDING | MATCHED | MISMATCHED
+  receivedAt      DateTime @default(now())
+  reconciledAt    DateTime?
+  createdAt       DateTime @default(now())
+
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
 }
