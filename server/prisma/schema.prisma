@@ -26,6 +26,10 @@ enum AuditEventType {
   ORG_CREATED
   CONTRACTOR_LINKED
   LOGIN
+  TIMESHEET_SUBMITTED
+  TIMESHEET_APPROVED
+  TIMESHEET_REJECTED
+  WORK_RECORD_CREATED
 }
 
 // ─── Organisation ────────────────────────────────────────
@@ -42,6 +46,8 @@ model Organisation {
   contractors_as_agency    Contractor[] @relation("AgencyContractors")
   contractors_as_umbrella  Contractor[] @relation("UmbrellaContractors")
   auditLogs                AuditLog[]
+  agencyWorkRecords   WorkRecord[] @relation("AgencyWorkRecords")
+  umbrellaWorkRecords WorkRecord[] @relation("UmbrellaWorkRecords")
 
   @@map("organisations")
 }
@@ -97,6 +103,8 @@ model Contractor {
   user     User         @relation(fields: [userId], references: [id])
   agency   Organisation @relation("AgencyContractors", fields: [agencyId], references: [id])
   umbrella Organisation @relation("UmbrellaContractors", fields: [umbrellaId], references: [id])
+  workRecords WorkRecord[]
+  timesheets  Timesheet[]
 
   @@map("contractors")
 }
@@ -117,6 +125,66 @@ model AuditLog {
 
   actor        User?         @relation(fields: [actorId], references: [id])
   organisation Organisation? @relation(fields: [orgId], references: [id])
+  workRecord   WorkRecord?   @relation("WorkRecordAuditLogs", fields: [workRecordId], references: [id])
 
   @@map("audit_logs")
+}
+
+// ─── Work Record State Machine ───────────────────────────
+
+enum WorkRecordState {
+  WORK_SUBMITTED
+  WORK_APPROVED
+  WORK_REJECTED
+  INVOICE_GENERATED
+  INVOICE_APPROVED
+  PAYMENT_PENDING
+  PAYMENT_RECEIVED
+  PAYROLL_PROCESSING
+  PAYROLL_COMPLETED
+  COMPLIANCE_SUBMITTED
+  COMPLETED
+}
+
+// ─── WorkRecord (the central object — one per timesheet cycle) ───
+
+model WorkRecord {
+  id          String          @id @default(uuid())
+  contractorId String
+  agencyId    String
+  umbrellaId  String
+  state       WorkRecordState @default(WORK_SUBMITTED)
+  version     Int             @default(1)  // optimistic locking
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  contractor  Contractor   @relation(fields: [contractorId], references: [id])
+  agency      Organisation @relation("AgencyWorkRecords", fields: [agencyId], references: [id])
+  umbrella    Organisation @relation("UmbrellaWorkRecords", fields: [umbrellaId], references: [id])
+
+  timesheets  Timesheet[]
+  auditLogs   AuditLog[]   @relation("WorkRecordAuditLogs")
+
+  @@map("work_records")
+}
+
+// ─── Timesheet (version-controlled) ──────────────────────
+
+model Timesheet {
+  id           String   @id @default(uuid())
+  workRecordId String
+  contractorId String
+  weekStarting DateTime
+  hoursWorked  Decimal  @db.Decimal(6, 2)
+  hourlyRate   Decimal  @db.Decimal(10, 2)
+  totalAmount  Decimal  @db.Decimal(10, 2)
+  notes        String?
+  version      Int      @default(1)
+  isActive     Boolean  @default(true)  // only latest version is active
+  createdAt    DateTime @default(now())
+
+  workRecord   WorkRecord @relation(fields: [workRecordId], references: [id])
+  contractor   Contractor @relation(fields: [contractorId], references: [id])
+
+  @@map("timesheets")
 }
