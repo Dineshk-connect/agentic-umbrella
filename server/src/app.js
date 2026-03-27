@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes.js'
 import timesheetRoutes from './routes/timesheet.routes.js'
 import invoiceRoutes from './routes/invoice.routes.js'
 import webhookRoutes from './routes/webhook.routes.js'
+import payrollRoutes from './routes/payroll.routes.js'
 
 const app = express()
 
@@ -21,5 +22,6 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 app.use('/api/timesheets', timesheetRoutes)
 app.use('/api/invoices', invoiceRoutes)
 app.use('/api/webhooks', webhookRoutes)
+app.use('/api/payroll', payrollRoutes)
 
 export default app

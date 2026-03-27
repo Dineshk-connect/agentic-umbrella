@@ -34,6 +34,8 @@ enum AuditEventType {
   INVOICE_APPROVED
   PAYMENT_RECEIVED
   PAYMENT_MISMATCH
+  PAYROLL_TRIGGERED
+  PAYROLL_COMPLETED
 }
 
 // ─── Organisation ────────────────────────────────────────
@@ -54,6 +56,7 @@ model Organisation {
   umbrellaWorkRecords WorkRecord[] @relation("UmbrellaWorkRecords")
   agencyInvoices    Invoice[] @relation("AgencyInvoices")
   umbrellaInvoices  Invoice[] @relation("UmbrellaInvoices")
+  payrolls Payroll[] @relation("UmbrellaPayrolls")
 
   @@map("organisations")
 }
@@ -112,6 +115,9 @@ model Contractor {
   workRecords WorkRecord[]
   timesheets  Timesheet[]
   invoices Invoice[]
+  payrolls Payroll[]
+  payslips Payslip[]
+  
 
   @@map("contractors")
 }
@@ -172,6 +178,7 @@ model WorkRecord {
   timesheets  Timesheet[]
   auditLogs   AuditLog[]   @relation("WorkRecordAuditLogs")
   invoice Invoice?
+  payroll Payroll?
 
   @@map("work_records")
 }
@@ -249,4 +256,60 @@ model Payment {
   invoice         Invoice  @relation(fields: [invoiceId], references: [id])
 
   @@map("payments")
+}
+
+// ─── Payroll ─────────────────────────────────────────────
+
+model Payroll {
+  id               String   @id @default(uuid())
+  workRecordId     String   @unique
+  contractorId     String
+  umbrellaId       String
+
+  // inputs
+  grossPay         Decimal  @db.Decimal(10, 2)
+  hourlyRate       Decimal  @db.Decimal(10, 2)
+  hoursWorked      Decimal  @db.Decimal(6, 2)
+
+  // deductions — every line itemised
+  incomeTax        Decimal  @db.Decimal(10, 2)
+  employeeNI       Decimal  @db.Decimal(10, 2)
+  employerNI       Decimal  @db.Decimal(10, 2)
+  umbrellaFee      Decimal  @db.Decimal(10, 2)
+  pensionEmployee  Decimal  @db.Decimal(10, 2)
+  studentLoan      Decimal  @db.Decimal(10, 2)
+
+  // output
+  netPay           Decimal  @db.Decimal(10, 2)
+  taxCode          String
+  taxYear          String
+  payPeriodStart   DateTime
+  payPeriodEnd     DateTime
+  paymentDate      DateTime?
+  state            String   @default("PAYROLL_PROCESSING")
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workRecord       WorkRecord @relation(fields: [workRecordId], references: [id])
+  contractor       Contractor @relation(fields: [contractorId], references: [id])
+  umbrella         Organisation @relation("UmbrellaPayrolls", fields: [umbrellaId], references: [id])
+  payslip          Payslip?
+
+  @@map("payrolls")
+}
+
+// ─── Payslip ─────────────────────────────────────────────
+
+model Payslip {
+  id           String   @id @default(uuid())
+  payrollId    String   @unique
+  contractorId String
+  content      Json     // full payslip data stored as JSON
+  generatedAt  DateTime @default(now())
+
+  payroll      Payroll    @relation(fields: [payrollId], references: [id])
+  contractor   Contractor @relation(fields: [contractorId], references: [id])
+
+  @@map("payslips")
 }
