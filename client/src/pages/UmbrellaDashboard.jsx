@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import Layout from '../components/Layout'
 import StateBadge from '../components/StateBadge'
+import MetricCard from '../components/ui/MetricCard'
+import Card from '../components/ui/Card'
+import Button from '../components/ui/Button'
+import ActivityFeed from '../components/ui/ActivityFeed'
 import api from '../lib/api'
 
 export default function UmbrellaDashboard() {
@@ -17,11 +21,17 @@ export default function UmbrellaDashboard() {
     queryFn: () => api.get('/exceptions').then(r => r.data)
   })
 
+  const { data: auditData } = useQuery({
+    queryKey: ['auditLogs'],
+    queryFn: () => api.get('/audit?limit=15').then(r => r.data)
+  })
+
   const payrollMutation = useMutation({
     mutationFn: (id) => api.post(`/payroll/${id}/run`),
     onSuccess: () => {
       toast.success('Payroll completed! Net salary disbursed.')
       queryClient.invalidateQueries(['workRecords'])
+      queryClient.invalidateQueries(['auditLogs'])
     },
     onError: (err) => toast.error(err.response?.data?.error ?? 'Payroll failed')
   })
@@ -29,10 +39,11 @@ export default function UmbrellaDashboard() {
   const complianceMutation = useMutation({
     mutationFn: (id) => api.post(`/compliance/${id}/validate`),
     onSuccess: (data) => {
-      if (data.data.passed) toast.success('Compliance passed! RTI submitted.')
-      else toast.error('Compliance failed. Check exceptions.')
+      if (data.data.passed) toast.success('RTI submitted to HMRC!')
+      else toast.error('Compliance failed — check exceptions.')
       queryClient.invalidateQueries(['workRecords'])
       queryClient.invalidateQueries(['exceptions'])
+      queryClient.invalidateQueries(['auditLogs'])
     },
     onError: (err) => toast.error(err.response?.data?.error ?? 'Failed')
   })
@@ -50,184 +61,146 @@ export default function UmbrellaDashboard() {
   const readyForCompliance = workRecords.filter(w => w.state === 'PAYROLL_COMPLETED')
   const readyToComplete = workRecords.filter(w => w.state === 'COMPLIANCE_SUBMITTED')
   const openExceptions = exceptions.filter(e => e.status === 'OPEN')
+  const pipeline = workRecords.filter(w => !['PAYMENT_RECEIVED','PAYROLL_COMPLETED','COMPLIANCE_SUBMITTED','COMPLETED'].includes(w.state))
+  const totalNetPaid = workRecords.filter(w => w.state === 'COMPLETED').length
+  const logs = auditData?.logs ?? []
 
-  // read-only pipeline view — all records grouped by state
-  const pipeline = workRecords.filter(w =>
-    !['PAYMENT_RECEIVED', 'PAYROLL_COMPLETED', 'COMPLIANCE_SUBMITTED', 'COMPLETED'].includes(w.state)
+  const QueueCard = ({ title, records, buttonLabel, buttonVariant, onAction, isPending }) => (
+    <Card title={title}>
+      {records.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '16px 0' }}>
+          None at this stage
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {records.map(record => (
+            <div key={record.id} style={{
+              border: '0.5px solid #E5E7EB', borderRadius: '8px',
+              padding: '12px 14px', background: '#fff',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <StateBadge state={record.state} size="xs" />
+                </div>
+                <div style={{ fontSize: '13px', fontWeight: 500, color: '#111827' }}>
+                  {record.contractor?.user?.name ?? 'Contractor'}
+                </div>
+                {record.timesheets?.[0] && (
+                  <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px' }}>
+                    Gross £{Number(record.timesheets[0].totalAmount).toFixed(2)}
+                  </div>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant={buttonVariant}
+                onClick={() => onAction(record.id)}
+                disabled={isPending}
+              >
+                {buttonLabel}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 
   return (
-    <Layout title="Umbrella Dashboard">
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        {[
-          { label: 'Ready for Payroll', value: readyForPayroll.length, color: 'text-green-600' },
-          { label: 'Awaiting Compliance', value: readyForCompliance.length, color: 'text-purple-600' },
-          { label: 'Open Exceptions', value: openExceptions.length, color: 'text-red-600' },
-          { label: 'Completed', value: workRecords.filter(w => w.state === 'COMPLETED').length, color: 'text-gray-600' },
-        ].map(stat => (
-          <div key={stat.label} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500">{stat.label}</p>
-            <p className={`text-3xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
-          </div>
-        ))}
+    <Layout title="Overview">
+      {/* Metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        <MetricCard label="Ready for payroll" value={readyForPayroll.length} sub="Payment received" subColor="#059669" />
+        <MetricCard label="Awaiting compliance" value={readyForCompliance.length} sub="Payroll done" />
+        <MetricCard label="Open exceptions" value={openExceptions.length} sub="Needs resolution" subColor={openExceptions.length > 0 ? '#DC2626' : '#059669'} />
+        <MetricCard label="Fully completed" value={totalNetPaid} sub="All obligations met" />
       </div>
 
-      {/* Pipeline — read only, no action buttons */}
-      {pipeline.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Pipeline — In Progress</h2>
-          <div className="space-y-3">
-            {pipeline.map(record => (
-              <div key={record.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <StateBadge state={record.state} />
-                      <span className="text-sm font-medium text-gray-700">
-                        {record.contractor?.user?.name ?? 'Contractor'}
-                      </span>
-                    </div>
-                    {record.timesheets?.[0] && (
-                      <p className="text-sm text-gray-500">
-                        {Number(record.timesheets[0].hoursWorked)}h ×
-                        £{Number(record.timesheets[0].hourlyRate)} =
-                        £{Number(record.timesheets[0].totalAmount).toFixed(2)}
-                      </p>
-                    )}
-                  </div>
-                  {/* No action buttons — umbrella cannot approve timesheets */}
-                  <span className="text-xs text-gray-400">Awaiting agency action</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-      {/* Ready for payroll — umbrella action */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Ready for Payroll</h2>
-        {readyForPayroll.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center text-gray-400 border border-gray-100">
-            No work records awaiting payroll
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {readyForPayroll.map(record => (
-              <div key={record.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <StateBadge state={record.state} />
-                      <span className="text-sm font-medium text-gray-900">
+          <QueueCard
+            title="Ready for payroll"
+            records={readyForPayroll}
+            buttonLabel="Run payroll"
+            buttonVariant="purple"
+            onAction={(id) => payrollMutation.mutate(id)}
+            isPending={payrollMutation.isPending}
+          />
+
+          <QueueCard
+            title="Awaiting HMRC submission"
+            records={readyForCompliance}
+            buttonLabel="Submit to HMRC"
+            buttonVariant="teal"
+            onAction={(id) => complianceMutation.mutate(id)}
+            isPending={complianceMutation.isPending}
+          />
+
+          <QueueCard
+            title="Ready to complete"
+            records={readyToComplete}
+            buttonLabel="Mark complete"
+            buttonVariant="secondary"
+            onAction={(id) => completeMutation.mutate(id)}
+            isPending={completeMutation.isPending}
+          />
+
+          {/* Pipeline read-only */}
+          {pipeline.length > 0 && (
+            <Card title="Pipeline — awaiting agency action">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {pipeline.map(record => (
+                  <div key={record.id} style={{
+                    border: '0.5px solid #E5E7EB', borderRadius: '8px',
+                    padding: '12px 14px', background: '#FAFAFA',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151' }}>
                         {record.contractor?.user?.name ?? 'Contractor'}
-                      </span>
-                    </div>
-                    {record.timesheets?.[0] && (
-                      <p className="text-sm text-gray-600">
-                        Gross: <span className="font-semibold">
+                      </div>
+                      {record.timesheets?.[0] && (
+                        <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>
                           £{Number(record.timesheets[0].totalAmount).toFixed(2)}
-                        </span>
-                      </p>
-                    )}
+                        </div>
+                      )}
+                    </div>
+                    <StateBadge state={record.state} size="xs" />
                   </div>
-                  <button
-                    onClick={() => payrollMutation.mutate(record.id)}
-                    disabled={payrollMutation.isPending}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-4 py-2 rounded-lg transition disabled:opacity-50"
-                  >
-                    Run Payroll
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </Card>
+          )}
 
-      {/* Ready for compliance */}
-      {readyForCompliance.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Awaiting Compliance Filing</h2>
-          <div className="space-y-3">
-            {readyForCompliance.map(record => (
-              <div key={record.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <StateBadge state={record.state} />
-                    <span className="text-sm text-gray-600">
-                      {record.contractor?.user?.name ?? record.id.slice(0, 8)}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => complianceMutation.mutate(record.id)}
-                    className="bg-teal-600 hover:bg-teal-700 text-white text-sm px-4 py-2 rounded-lg transition"
-                  >
-                    Submit to HMRC
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Ready to complete */}
-      {readyToComplete.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Ready to Complete</h2>
-          <div className="space-y-3">
-            {readyToComplete.map(record => (
-              <div key={record.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <StateBadge state={record.state} />
-                    <span className="text-sm text-gray-600">
-                      {record.contractor?.user?.name ?? record.id.slice(0, 8)}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => completeMutation.mutate(record.id)}
-                    className="bg-gray-800 hover:bg-gray-900 text-white text-sm px-4 py-2 rounded-lg transition"
-                  >
-                    Mark Complete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Open exceptions */}
-      {openExceptions.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Open Exceptions
-            <span className="ml-2 text-sm bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-              {openExceptions.length}
-            </span>
-          </h2>
-          <div className="space-y-3">
-            {openExceptions.map(ex => (
-              <div key={ex.id} className="bg-red-50 rounded-xl p-5 border border-red-100">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-sm font-medium text-red-800">
+          {/* Open exceptions */}
+          {openExceptions.length > 0 && (
+            <Card title={`Open exceptions (${openExceptions.length})`}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {openExceptions.map(ex => (
+                  <div key={ex.id} style={{
+                    background: '#FEF2F2',
+                    border: '0.5px solid #FECACA',
+                    borderRadius: '8px',
+                    padding: '12px 14px'
+                  }}>
+                    <div style={{ fontSize: '12px', fontWeight: 500, color: '#991B1B', marginBottom: '4px' }}>
                       {ex.type.replace(/_/g, ' ')}
-                    </span>
-                    <p className="text-sm text-red-600 mt-1">{ex.description}</p>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#B91C1C' }}>{ex.description}</div>
                   </div>
-                  <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                    {ex.status}
-                  </span>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </Card>
+          )}
         </div>
-      )}
+
+        {/* Activity feed */}
+        <Card title="Activity feed">
+          <ActivityFeed logs={logs} />
+        </Card>
+      </div>
     </Layout>
   )
 }

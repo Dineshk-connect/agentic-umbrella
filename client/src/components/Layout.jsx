@@ -1,35 +1,29 @@
-import { useAuth } from '../context/AuthContext'
+import Sidebar from './Sidebar'
 
-export default function Layout({ children, title }) {
-  const { user, logout } = useAuth()
-  const role = user?.memberships?.[0]?.role
-
-  const roleColors = {
-    CONTRACTOR: 'bg-teal-600',
-    ADMIN: 'bg-blue-600',
-    CONSULTANT: 'bg-blue-500',
-    PAYROLL_OPERATOR: 'bg-purple-600'
-  }
-
+export default function Layout({ children, title, actions, pendingCount }) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className={`${roleColors[role] ?? 'bg-gray-800'} text-white px-6 py-4 flex justify-between items-center`}>
-        <div>
-          <span className="font-bold text-lg">Agentic Umbrella</span>
-          <span className="ml-3 text-sm opacity-75">{title}</span>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FC' }}>
+      <Sidebar pendingCount={pendingCount} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* Topbar */}
+        <div style={{
+          height: '52px',
+          background: '#fff',
+          borderBottom: '0.5px solid #E5E7EB',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 28px',
+          flexShrink: 0
+        }}>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#111827' }}>{title}</span>
+          {actions && <div style={{ display: 'flex', gap: '8px' }}>{actions}</div>}
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm">{user?.name}</span>
-          <span className="text-xs bg-white/20 px-2 py-1 rounded">{role}</span>
-          <button
-            onClick={logout}
-            className="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded transition"
-          >
-            Logout
-          </button>
+        {/* Page content */}
+        <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+          {children}
         </div>
-      </nav>
-      <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+      </div>
     </div>
   )
-}   
+}

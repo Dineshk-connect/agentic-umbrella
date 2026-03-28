@@ -3,6 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import Layout from '../components/Layout'
 import StateBadge from '../components/StateBadge'
+import MetricCard from '../components/ui/MetricCard'
+import Card from '../components/ui/Card'
+import Button from '../components/ui/Button'
+import Timeline from '../components/ui/Timeline'
+import ActivityFeed from '../components/ui/ActivityFeed'
 import api from '../lib/api'
 
 export default function AgencyDashboard() {
@@ -11,8 +16,9 @@ export default function AgencyDashboard() {
   const [rejectReason, setRejectReason] = useState('')
   const [payModal, setPayModal] = useState(null)
   const [payRef, setPayRef] = useState('')
+  const [selectedRecord, setSelectedRecord] = useState(null)
 
-  const { data: workRecords = [], isLoading } = useQuery({
+  const { data: workRecords = [] } = useQuery({
     queryKey: ['workRecords'],
     queryFn: () => api.get('/timesheets').then(r => r.data)
   })
@@ -22,12 +28,24 @@ export default function AgencyDashboard() {
     queryFn: () => api.get('/invoices').then(r => r.data)
   })
 
+  const { data: auditData } = useQuery({
+    queryKey: ['auditLogs'],
+    queryFn: () => api.get('/audit?limit=10').then(r => r.data)
+  })
+
+  const { data: timelineData } = useQuery({
+    queryKey: ['timeline', selectedRecord],
+    queryFn: () => api.get(`/audit/work-record/${selectedRecord}`).then(r => r.data),
+    enabled: !!selectedRecord
+  })
+
   const approveMutation = useMutation({
     mutationFn: (id) => api.post(`/timesheets/${id}/approve`),
     onSuccess: () => {
       toast.success('Timesheet approved — invoice generated!')
       queryClient.invalidateQueries(['workRecords'])
       queryClient.invalidateQueries(['invoices'])
+      queryClient.invalidateQueries(['auditLogs'])
     },
     onError: (err) => toast.error(err.response?.data?.error ?? 'Failed')
   })
@@ -48,14 +66,14 @@ export default function AgencyDashboard() {
     onSuccess: () => {
       toast.success('Invoice approved')
       queryClient.invalidateQueries(['invoices'])
+      queryClient.invalidateQueries(['auditLogs'])
     },
     onError: (err) => toast.error(err.response?.data?.error ?? 'Failed')
   })
 
   const payMutation = useMutation({
     mutationFn: ({ id, reference }) => api.post(`/invoices/${id}/pay`, {
-      reference,
-      fromAccount: 'GB29NWBK60161331926819'
+      reference, fromAccount: 'GB29NWBK60161331926819'
     }),
     onSuccess: () => {
       toast.success('Payment initiated!')
@@ -67,186 +85,227 @@ export default function AgencyDashboard() {
   })
 
   const webhookMutation = useMutation({
-    mutationFn: ({ reference, amount }) =>
-      api.post('/webhooks/payment', {
-        reference,
-        amount,
-        fromAccount: 'GB29NWBK60161331926819'
-      }),
+    mutationFn: ({ reference, amount }) => api.post('/webhooks/payment', {
+      reference, amount, fromAccount: 'GB29NWBK60161331926819'
+    }),
     onSuccess: () => {
       toast.success('Bank payment confirmed! Payroll is now unlocked.')
       queryClient.invalidateQueries(['invoices'])
       queryClient.invalidateQueries(['workRecords'])
+      queryClient.invalidateQueries(['auditLogs'])
     },
     onError: (err) => toast.error(err.response?.data?.error ?? 'Webhook failed')
   })
 
   const pendingTimesheets = workRecords.filter(w => w.state === 'WORK_SUBMITTED')
-  const pendingInvoices = invoices.filter(i => ['INVOICE_GENERATED', 'INVOICE_APPROVED'].includes(i.state))
+  const totalInvoiced = invoices.reduce((sum, i) => sum + Number(i.amount), 0)
+  const activeContractors = [...new Set(workRecords.map(w => w.contractorId))].length
+  const completed = workRecords.filter(w => w.state === 'COMPLETED').length
+  const logs = auditData?.logs ?? []
 
   return (
-    <Layout title="Agency Dashboard">
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        {[
-          { label: 'Pending Approval', value: pendingTimesheets.length, color: 'text-yellow-600' },
-          { label: 'Total Records', value: workRecords.length, color: 'text-blue-600' },
-          { label: 'Pending Invoices', value: pendingInvoices.length, color: 'text-orange-600' },
-          { label: 'Completed', value: workRecords.filter(w => w.state === 'COMPLETED').length, color: 'text-green-600' },
-        ].map(stat => (
-          <div key={stat.label} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500">{stat.label}</p>
-            <p className={`text-3xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
-          </div>
-        ))}
+    <Layout
+      title="Overview"
+      pendingCount={pendingTimesheets.length}
+      actions={<Button size="sm">+ New timesheet</Button>}
+    >
+      {/* Metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        <MetricCard label="Pending approval" value={pendingTimesheets.length} sub="Timesheets awaiting review" />
+        <MetricCard label="Total invoiced" value={`£${totalInvoiced.toLocaleString()}`} sub="This period" subColor="#059669" />
+        <MetricCard label="Active contractors" value={activeContractors} sub="This period" />
+        <MetricCard label="Completed" value={completed} sub="Full cycle done" />
       </div>
 
-      {/* Pending timesheets */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Timesheets Awaiting Approval</h2>
-        {pendingTimesheets.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center text-gray-400 border border-gray-100">
-            No timesheets pending approval
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {pendingTimesheets.map(record => (
-              <div key={record.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <StateBadge state={record.state} />
-                      <span className="text-sm font-medium text-gray-900">
-                        {record.contractor?.user?.name ?? 'Contractor'}
-                      </span>
-                    </div>
-                    {record.timesheets?.[0] && (
-                      <p className="text-sm text-gray-600">
-                        {Number(record.timesheets[0].hoursWorked)}h ×
-                        £{Number(record.timesheets[0].hourlyRate)} =
-                        <span className="font-semibold"> £{Number(record.timesheets[0].totalAmount).toFixed(2)}</span>
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => approveMutation.mutate(record.id)}
-                      disabled={approveMutation.isPending}
-                      className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg transition disabled:opacity-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => setRejectModal(record.id)}
-                      className="bg-red-50 hover:bg-red-100 text-red-700 text-sm px-4 py-2 rounded-lg transition"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '16px' }}>
+        {/* Left column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-      {/* Invoices */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Invoices</h2>
-        {invoices.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center text-gray-400 border border-gray-100">
-            No invoices yet
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {invoices.map(invoice => (
-              <div key={invoice.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <span className="font-mono text-sm font-medium text-gray-900">
-                        {invoice.invoiceNumber}
-                      </span>
-                      <StateBadge state={invoice.state} />
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Amount: <span className="font-semibold text-gray-900">
-                        £{Number(invoice.amount).toFixed(2)}
-                      </span>
-                      <span className="ml-3 text-gray-400">
-                        Due: {new Date(invoice.dueDate).toLocaleDateString('en-GB')}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {invoice.state === 'INVOICE_GENERATED' && (
-                      <button
-                        onClick={() => approveInvoiceMutation.mutate(invoice.id)}
-                        disabled={approveInvoiceMutation.isPending}
-                        className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition disabled:opacity-50"
-                      >
-                        Approve Invoice
-                      </button>
-                    )}
-                    {invoice.state === 'INVOICE_APPROVED' && (
-                      <button
-                        onClick={() => setPayModal(invoice.id)}
-                        className="bg-orange-600 hover:bg-orange-700 text-white text-sm px-4 py-2 rounded-lg transition"
-                      >
-                        Make Payment
-                      </button>
-                    )}
-                    {invoice.state === 'PAYMENT_PENDING' && (
-                      <button
-                        onClick={() => webhookMutation.mutate({
-                          reference: invoice.payments?.[0]?.reference,
-                          amount: Number(invoice.amount)
-                        })}
-                        disabled={webhookMutation.isPending}
-                        className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg transition disabled:opacity-50"
-                      >
-                        {webhookMutation.isPending ? 'Confirming...' : 'Confirm Bank Payment'}
-                      </button>
-                    )}
-                    {invoice.state === 'PAYMENT_RECEIVED' && (
-                      <span className="text-sm text-green-600 font-medium px-4 py-2">
-                        ✓ Payment received
-                      </span>
-                    )}
-                  </div>
-                </div>
+          {/* Pending timesheets */}
+          <Card title="Timesheets awaiting approval">
+            {pendingTimesheets.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '20px 0' }}>
+                No timesheets pending
               </div>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {pendingTimesheets.map(record => (
+                  <div
+                    key={record.id}
+                    onClick={() => setSelectedRecord(record.id)}
+                    style={{
+                      border: selectedRecord === record.id ? '0.5px solid #1A56DB' : '0.5px solid #E5E7EB',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                      background: selectedRecord === record.id ? '#EFF6FF' : '#fff'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 500, color: '#111827', marginBottom: '3px' }}>
+                          {record.contractor?.user?.name ?? 'Contractor'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#6B7280' }}>
+                          Week of {new Date(record.timesheets?.[0]?.weekStarting).toLocaleDateString('en-GB')}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827' }}>
+                          £{Number(record.timesheets?.[0]?.totalAmount ?? 0).toFixed(2)}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#6B7280' }}>
+                          {Number(record.timesheets?.[0]?.hoursWorked)}h × £{Number(record.timesheets?.[0]?.hourlyRate)}/hr
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <StateBadge state={record.state} size="xs" />
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <Button
+                          size="sm"
+                          variant="success"
+                          onClick={(e) => { e.stopPropagation(); approveMutation.mutate(record.id) }}
+                          disabled={approveMutation.isPending}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={(e) => { e.stopPropagation(); setRejectModal(record.id) }}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Invoices */}
+          <Card title="Invoices">
+            {invoices.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '20px 0' }}>
+                No invoices yet
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {invoices.map(invoice => (
+                  <div key={invoice.id} style={{
+                    border: '0.5px solid #E5E7EB',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    background: '#fff'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 500, color: '#111827', fontFamily: 'monospace' }}>
+                            {invoice.invoiceNumber}
+                          </span>
+                          <StateBadge state={invoice.state} size="xs" />
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#6B7280' }}>
+                          £{Number(invoice.amount).toFixed(2)} · Due {new Date(invoice.dueDate).toLocaleDateString('en-GB')}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {invoice.state === 'INVOICE_GENERATED' && (
+                          <Button size="sm" onClick={() => approveInvoiceMutation.mutate(invoice.id)}>
+                            Approve
+                          </Button>
+                        )}
+                        {invoice.state === 'INVOICE_APPROVED' && (
+                          <Button size="sm" variant="secondary" onClick={() => setPayModal(invoice.id)}>
+                            Make payment
+                          </Button>
+                        )}
+                        {invoice.state === 'PAYMENT_PENDING' && (
+                          <Button
+                            size="sm"
+                            variant="success"
+                            onClick={() => webhookMutation.mutate({
+                              reference: invoice.payments?.[0]?.reference,
+                              amount: Number(invoice.amount)
+                            })}
+                            disabled={webhookMutation.isPending}
+                          >
+                            Confirm bank payment
+                          </Button>
+                        )}
+                        {invoice.state === 'PAYMENT_RECEIVED' && (
+                          <span style={{ fontSize: '12px', color: '#059669', fontWeight: 500 }}>✓ Paid</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Right column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* Timeline */}
+          <Card title={selectedRecord ? 'Work record timeline' : 'Timeline'}>
+            {!selectedRecord ? (
+              <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '12px', padding: '16px 0' }}>
+                Click a timesheet to see its timeline
+              </div>
+            ) : (
+              <Timeline
+                currentState={workRecords.find(w => w.id === selectedRecord)?.state}
+                events={timelineData?.trail ?? []}
+              />
+            )}
+          </Card>
+
+          {/* Activity feed */}
+          <Card title="Activity feed">
+            <ActivityFeed logs={logs} />
+          </Card>
+        </div>
       </div>
 
       {/* Reject modal */}
       {rejectModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="font-semibold text-gray-900 mb-4">Rejection reason</h3>
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 50
+        }}>
+          <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', width: '420px', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: 500, color: '#111827', marginBottom: '6px' }}>Reject timesheet</div>
+            <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '16px' }}>Provide a reason — this will be sent to the contractor and stored permanently.</div>
             <textarea
               value={rejectReason}
               onChange={e => setRejectReason(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 mb-4"
+              style={{
+                width: '100%', border: '0.5px solid #D1D5DB',
+                borderRadius: '8px', padding: '10px 12px',
+                fontSize: '13px', resize: 'none',
+                outline: 'none', marginBottom: '16px',
+                fontFamily: 'inherit', color: '#111827'
+              }}
               rows={3}
-              placeholder="Explain why this timesheet is being rejected..."
+              placeholder="e.g. Hours exceed agreed weekly limit. Please resubmit with correct hours."
             />
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setRejectModal(null)}
-                className="text-sm px-4 py-2 text-gray-600 hover:text-gray-900"
-              >
-                Cancel
-              </button>
-              <button
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <Button variant="ghost" onClick={() => setRejectModal(null)}>Cancel</Button>
+              <Button
+                variant="danger"
+                style={{ background: '#DC2626', color: '#fff', border: 'none' }}
                 onClick={() => rejectMutation.mutate({ id: rejectModal, reason: rejectReason })}
                 disabled={!rejectReason.trim()}
-                className="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50"
               >
-                Confirm Rejection
-              </button>
+                Confirm rejection
+              </Button>
             </div>
           </div>
         </div>
@@ -254,32 +313,34 @@ export default function AgencyDashboard() {
 
       {/* Pay modal */}
       {payModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="font-semibold text-gray-900 mb-4">Initiate Payment</h3>
-            <p className="text-sm text-gray-500 mb-3">
-              Enter a unique payment reference for bank transfer tracking
-            </p>
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 50
+        }}>
+          <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', width: '420px', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: 500, color: '#111827', marginBottom: '6px' }}>Initiate payment</div>
+            <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '16px' }}>Enter a unique bank transfer reference for reconciliation.</div>
             <input
               value={payRef}
               onChange={e => setPayRef(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 mb-4"
+              style={{
+                width: '100%', border: '0.5px solid #D1D5DB',
+                borderRadius: '8px', padding: '10px 12px',
+                fontSize: '13px', outline: 'none',
+                marginBottom: '16px', fontFamily: 'monospace', color: '#111827'
+              }}
               placeholder="e.g. PAY-REF-042"
             />
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setPayModal(null)}
-                className="text-sm px-4 py-2 text-gray-600 hover:text-gray-900"
-              >
-                Cancel
-              </button>
-              <button
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <Button variant="ghost" onClick={() => setPayModal(null)}>Cancel</Button>
+              <Button
                 onClick={() => payMutation.mutate({ id: payModal, reference: payRef })}
                 disabled={!payRef.trim() || payMutation.isPending}
-                className="bg-orange-600 hover:bg-orange-700 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50"
               >
-                {payMutation.isPending ? 'Processing...' : 'Confirm Payment'}
-              </button>
+                {payMutation.isPending ? 'Processing...' : 'Confirm payment'}
+              </Button>
             </div>
           </div>
         </div>

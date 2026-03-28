@@ -1,21 +1,30 @@
-const STATE_STYLES = {
-  WORK_SUBMITTED:       'bg-yellow-100 text-yellow-800',
-  WORK_APPROVED:        'bg-green-100 text-green-800',
-  WORK_REJECTED:        'bg-red-100 text-red-800',
-  INVOICE_GENERATED:    'bg-blue-100 text-blue-800',
-  INVOICE_APPROVED:     'bg-blue-200 text-blue-900',
-  PAYMENT_PENDING:      'bg-orange-100 text-orange-800',
-  PAYMENT_RECEIVED:     'bg-green-200 text-green-900',
-  PAYROLL_PROCESSING:   'bg-purple-100 text-purple-800',
-  PAYROLL_COMPLETED:    'bg-purple-200 text-purple-900',
-  COMPLIANCE_SUBMITTED: 'bg-teal-100 text-teal-800',
-  COMPLETED:            'bg-gray-100 text-gray-800',
-}
+import { STATE_CONFIG } from '../styles/tokens'
 
-export default function StateBadge({ state }) {
+export default function StateBadge({ state, size = 'sm' }) {
+  const config = STATE_CONFIG[state] ?? { label: state, bg: '#F3F4F6', text: '#374151', dot: '#9CA3AF' }
+  const fontSize = size === 'xs' ? '10px' : '11px'
+  const padding = size === 'xs' ? '2px 7px' : '3px 9px'
+
   return (
-    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATE_STYLES[state] ?? 'bg-gray-100 text-gray-600'}`}>
-      {state?.replace(/_/g, ' ')}
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '5px',
+      background: config.bg,
+      color: config.text,
+      fontSize,
+      fontWeight: 500,
+      padding,
+      borderRadius: '20px',
+      whiteSpace: 'nowrap'
+    }}>
+      <span style={{
+        width: '5px', height: '5px',
+        borderRadius: '50%',
+        background: config.dot,
+        flexShrink: 0
+      }}/>
+      {config.label}
     </span>
   )
 }
