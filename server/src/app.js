@@ -22,6 +22,8 @@ app.use('/api/auth', authRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
+
+
 app.use('/api/timesheets', timesheetRoutes)
 app.use('/api/invoices', invoiceRoutes)
 app.use('/api/webhooks', webhookRoutes)
@@ -29,5 +31,9 @@ app.use('/api/payroll', payrollRoutes)
 app.use('/api/compliance', complianceRoutes)
 app.use('/api/exceptions', exceptionRoutes)
 app.use('/api/audit', auditRoutes)
+
+app.get("/", (req, res) => {
+  res.send("Backend is running 🚀");
+});
 
 export default app
