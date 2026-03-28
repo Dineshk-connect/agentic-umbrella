@@ -7,6 +7,9 @@ import timesheetRoutes from './routes/timesheet.routes.js'
 import invoiceRoutes from './routes/invoice.routes.js'
 import webhookRoutes from './routes/webhook.routes.js'
 import payrollRoutes from './routes/payroll.routes.js'
+import complianceRoutes from './routes/compliance.routes.js'
+import exceptionRoutes from './routes/exception.routes.js'
+import auditRoutes from './routes/audit.routes.js'
 
 const app = express()
 
@@ -23,5 +26,8 @@ app.use('/api/timesheets', timesheetRoutes)
 app.use('/api/invoices', invoiceRoutes)
 app.use('/api/webhooks', webhookRoutes)
 app.use('/api/payroll', payrollRoutes)
+app.use('/api/compliance', complianceRoutes)
+app.use('/api/exceptions', exceptionRoutes)
+app.use('/api/audit', auditRoutes)
 
 export default app

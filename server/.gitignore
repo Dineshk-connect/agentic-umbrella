@@ -3,3 +3,6 @@ node_modules
 .env
 
 /generated/prisma
+.DS_Store
+prisma/migrations/*.sql
+dist/

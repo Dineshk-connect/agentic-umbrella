@@ -36,6 +36,11 @@ enum AuditEventType {
   PAYMENT_MISMATCH
   PAYROLL_TRIGGERED
   PAYROLL_COMPLETED
+  COMPLIANCE_VALIDATED
+  COMPLIANCE_FAILED
+  EXCEPTION_RAISED
+  EXCEPTION_RESOLVED
+  PAYROLL_OVERRIDE
 }
 
 // ─── Organisation ────────────────────────────────────────
@@ -75,6 +80,8 @@ model User {
   memberships OrgMembership[]
   contractor  Contractor?
   auditLogs   AuditLog[]
+  assignedExceptions  Exception[] @relation("AssignedExceptions")
+  resolvedExceptions  Exception[] @relation("ResolvedExceptions")
 
   @@map("users")
 }
@@ -179,6 +186,7 @@ model WorkRecord {
   auditLogs   AuditLog[]   @relation("WorkRecordAuditLogs")
   invoice Invoice?
   payroll Payroll?
+  exceptions Exception[]
 
   @@map("work_records")
 }
@@ -312,4 +320,43 @@ model Payslip {
   contractor   Contractor @relation(fields: [contractorId], references: [id])
 
   @@map("payslips")
+}
+
+// ─── Exception Queue ─────────────────────────────────────
+
+enum ExceptionType {
+  PAYMENT_MISMATCH
+  INVALID_TAX_CODE
+  MISSING_NI_NUMBER
+  PAYROLL_ANOMALY
+  HMRC_SUBMISSION_FAILED
+  BANK_TRANSFER_UNRECOGNISED
+}
+
+enum ExceptionStatus {
+  OPEN
+  ASSIGNED
+  RESOLVED
+  ESCALATED
+}
+
+model Exception {
+  id           String          @id @default(uuid())
+  workRecordId String?
+  type         ExceptionType
+  status       ExceptionStatus @default(OPEN)
+  description  String
+  assignedTo   String?         // userId of admin handling it
+  resolvedBy   String?
+  resolution   String?         // mandatory written justification
+  metadata     Json?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  resolvedAt   DateTime?
+
+  workRecord   WorkRecord?  @relation(fields: [workRecordId], references: [id])
+  assignee     User?        @relation("AssignedExceptions", fields: [assignedTo], references: [id])
+  resolver     User?        @relation("ResolvedExceptions", fields: [resolvedBy], references: [id])
+
+  @@map("exceptions")
 }
