@@ -4,11 +4,13 @@ import toast from 'react-hot-toast'
 import Layout from '../components/Layout'
 import StateBadge from '../components/StateBadge'
 import api from '../lib/api'
+import { generatePayslipPDF } from '../utils/generatePayslipPDF'
 
 export default function ContractorDashboard() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ weekStarting: '', hoursWorked: '', notes: '' })
+  const [downloadingId, setDownloadingId] = useState(null)
 
   const { data: workRecords = [], isLoading } = useQuery({
     queryKey: ['workRecords'],
@@ -30,6 +32,29 @@ export default function ContractorDashboard() {
     e.preventDefault()
     submitMutation.mutate(form)
   }
+
+  const handleDownloadPayslip = async (workRecordId) => {
+    setDownloadingId(workRecordId)
+    try {
+      const { data } = await api.get(`/payroll/${workRecordId}/payslip`)
+      if (!data || !data.content) {
+        toast.error('Payslip not available yet')
+        return
+      }
+      generatePayslipPDF(data)
+      toast.success('Payslip downloaded!')
+    } catch (err) {
+      toast.error('Could not download payslip')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  const hasPayslip = (state) => [
+    'PAYROLL_COMPLETED',
+    'COMPLIANCE_SUBMITTED',
+    'COMPLETED'
+  ].includes(state)
 
   return (
     <Layout title="Contractor Dashboard">
@@ -118,7 +143,7 @@ export default function ContractorDashboard() {
           {workRecords.map(record => (
             <div key={record.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
               <div className="flex justify-between items-start">
-                <div>
+                <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <StateBadge state={record.state} />
                     <span className="text-xs text-gray-400">
@@ -128,14 +153,39 @@ export default function ContractorDashboard() {
                   {record.timesheets?.[0] && (
                     <div className="text-sm text-gray-600 space-y-1">
                       <p>Week: {new Date(record.timesheets[0].weekStarting).toLocaleDateString('en-GB')}</p>
-                      <p>Hours: {Number(record.timesheets[0].hoursWorked)}h
+                      <p>
+                        Hours: {Number(record.timesheets[0].hoursWorked)}h
                         × £{Number(record.timesheets[0].hourlyRate)}/hr
-                        = <span className="font-semibold text-gray-900">£{Number(record.timesheets[0].totalAmount).toFixed(2)}</span>
+                        = <span className="font-semibold text-gray-900">
+                          £{Number(record.timesheets[0].totalAmount).toFixed(2)}
+                        </span>
                       </p>
                     </div>
                   )}
                 </div>
-                <span className="text-xs text-gray-300 font-mono">{record.id.slice(0, 8)}</span>
+
+                <div className="flex items-center gap-2 ml-4">
+                  {/* Download payslip button — only shows when payroll is done */}
+                  {hasPayslip(record.state) && (
+                    <button
+                      onClick={() => handleDownloadPayslip(record.id)}
+                      disabled={downloadingId === record.id}
+                      className="flex items-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-700 text-sm font-medium px-4 py-2 rounded-lg transition disabled:opacity-50"
+                    >
+                      {downloadingId === record.id ? (
+                        'Downloading...'
+                      ) : (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Download Payslip
+                        </>
+                      )}
+                    </button>
+                  )}
+                  <span className="text-xs text-gray-300 font-mono">{record.id.slice(0, 8)}</span>
+                </div>
               </div>
             </div>
           ))}
