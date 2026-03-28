@@ -68,10 +68,17 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body
 
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: { memberships: true, contractor: true }
-    })
+   const user = await prisma.user.findUnique({
+  where: { email },
+  include: {
+    memberships: {
+      include: {
+        organisation: true
+      }
+    },
+    contractor: true
+  }
+})
     if (!user) return res.status(401).json({ error: 'Invalid credentials' })
 
     const valid = await bcrypt.compare(password, user.passwordHash)
@@ -108,4 +115,82 @@ export const me = async (req, res) => {
     memberships: req.user.memberships,
     contractor: req.user.contractor
   })
+}
+
+// GET /api/auth/organisations — public, no auth needed
+export const getOrganisations = async (req, res) => {
+  try {
+    const orgs = await prisma.organisation.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, type: true }
+    })
+    res.json(orgs)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// POST /api/auth/register/contractor
+export const registerContractor = async (req, res) => {
+  try {
+    const { name, email, password, agencyId, umbrellaId, taxCode, niNumber, hourlyRate } = req.body
+
+    const exists = await prisma.user.findUnique({ where: { email } })
+    if (exists) return res.status(400).json({ error: 'Email already in use' })
+
+    const passwordHash = await bcrypt.hash(password, 12)
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name, email, passwordHash,
+          memberships: {
+            create: { orgId: agencyId, role: 'CONTRACTOR' }
+          }
+        },
+        include: { memberships: true }
+      })
+
+      const contractor = await tx.contractor.create({
+        data: {
+          userId: user.id,
+          agencyId,
+          umbrellaId,
+          taxCode: taxCode || '1257L',
+          niNumber,
+          hourlyRate: hourlyRate || 0
+        }
+      })
+
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorRole: 'CONTRACTOR',
+          orgId: agencyId,
+          eventType: 'CONTRACTOR_LINKED',
+          metadata: { agencyId, umbrellaId }
+        }
+      })
+
+      return { user, contractor }
+    })
+
+    const token = jwt.sign(
+      { userId: result.user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    )
+
+    res.status(201).json({
+      token,
+      user: {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email
+      }
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: err.message })
+  }
 }
