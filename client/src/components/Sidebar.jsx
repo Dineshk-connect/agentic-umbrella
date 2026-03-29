@@ -17,28 +17,28 @@ const navByRole = {
   CONTRACTOR: [
     { section: 'My Work', items: [
       { label: 'Overview', icon: 'overview', path: '/contractor' },
-      { label: 'Timesheets', icon: 'timesheets', path: '/contractor/timesheets' },
-      { label: 'Payslips', icon: 'payslips', path: '/contractor/payslips' },
+      { label: 'Timesheets', icon: 'timesheets', path: '/contractor#timesheets' },
+      { label: 'Payslips', icon: 'payslips', path: '/contractor#payslips' },
     ]},
   ],
   ADMIN_AGENCY: [
     { section: 'Workspace', items: [
       { label: 'Overview', icon: 'overview', path: '/agency' },
-      { label: 'Timesheets', icon: 'timesheets', path: '/agency/timesheets' },
-      { label: 'Invoices', icon: 'invoices', path: '/agency/invoices' },
+      { label: 'Timesheets', icon: 'timesheets', path: '/agency#timesheets' },
+      { label: 'Invoices', icon: 'invoices', path: '/agency#invoices' },
     ]},
     { section: 'Finance', items: [
-      { label: 'Payments', icon: 'payments', path: '/agency/payments' },
+      { label: 'Payments', icon: 'payments', path: '/agency#payments' },
     ]},
   ],
   ADMIN_UMBRELLA: [
     { section: 'Workspace', items: [
       { label: 'Overview', icon: 'overview', path: '/umbrella' },
-      { label: 'Payroll', icon: 'payroll', path: '/umbrella/payroll' },
+      { label: 'Payroll', icon: 'payroll', path: '/umbrella#payroll' },
     ]},
     { section: 'Compliance', items: [
-      { label: 'HMRC', icon: 'compliance', path: '/umbrella/compliance' },
-      { label: 'Audit log', icon: 'audit', path: '/umbrella/audit' },
+      { label: 'HMRC', icon: 'compliance', path: '/umbrella#hmrc' },
+      { label: 'Audit log', icon: 'audit', path: '/umbrella#audit' },
     ]},
   ],
 }

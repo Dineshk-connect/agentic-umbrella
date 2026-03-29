@@ -148,72 +148,122 @@ export default function ContractorDashboard() {
           )}
 
           {/* Work records */}
-          <Card title="My timesheets">
-            {isLoading ? (
-              <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '24px 0' }}>Loading...</div>
-            ) : workRecords.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '24px 0' }}>
-                No timesheets yet. Submit your first one above.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {workRecords.map(record => (
-                  <div
-                    key={record.id}
-                    onClick={() => setSelectedRecord(record.id === selectedRecord ? null : record.id)}
-                    style={{
-                      border: selectedRecord === record.id ? '0.5px solid #1A56DB' : '0.5px solid #E5E7EB',
-                      borderRadius: '8px',
-                      padding: '12px 14px',
-                      cursor: 'pointer',
-                      background: selectedRecord === record.id ? '#EFF6FF' : '#fff'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                          <StateBadge state={record.state} size="xs" />
-                          <span style={{ fontSize: '11px', color: '#9CA3AF' }}>
-                            {new Date(record.createdAt).toLocaleDateString('en-GB')}
-                          </span>
+          <div id="timesheets" style={{ scrollMarginTop: '24px' }}>
+            <Card title="My timesheets">
+              {isLoading ? (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '24px 0' }}>Loading...</div>
+              ) : workRecords.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '24px 0' }}>
+                  No timesheets yet. Submit your first one above.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {workRecords.map(record => (
+                    <div
+                      key={record.id}
+                      onClick={() => setSelectedRecord(record.id === selectedRecord ? null : record.id)}
+                      style={{
+                        border: selectedRecord === record.id ? '0.5px solid #1A56DB' : '0.5px solid #E5E7EB',
+                        borderRadius: '8px',
+                        padding: '12px 14px',
+                        cursor: 'pointer',
+                        background: selectedRecord === record.id ? '#EFF6FF' : '#fff'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                            <StateBadge state={record.state} size="xs" />
+                            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>
+                              {new Date(record.createdAt).toLocaleDateString('en-GB')}
+                            </span>
+                          </div>
+                          {record.timesheets?.[0] && (
+                            <div style={{ fontSize: '12px', color: '#6B7280' }}>
+                              Week of {new Date(record.timesheets[0].weekStarting).toLocaleDateString('en-GB')}
+                              {' · '}
+                              {Number(record.timesheets[0].hoursWorked)}h × £{Number(record.timesheets[0].hourlyRate)}/hr
+                            </div>
+                          )}
                         </div>
-                        {record.timesheets?.[0] && (
-                          <div style={{ fontSize: '12px', color: '#6B7280' }}>
-                            Week of {new Date(record.timesheets[0].weekStarting).toLocaleDateString('en-GB')}
-                            {' · '}
-                            {Number(record.timesheets[0].hoursWorked)}h × £{Number(record.timesheets[0].hourlyRate)}/hr
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827' }}>
+                              £{Number(record.timesheets?.[0]?.totalAmount ?? 0).toFixed(2)}
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#9CA3AF', fontFamily: 'monospace' }}>
+                              {record.id.slice(0, 8)}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827' }}>
-                            £{Number(record.timesheets?.[0]?.totalAmount ?? 0).toFixed(2)}
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#9CA3AF', fontFamily: 'monospace' }}>
-                            {record.id.slice(0, 8)}
-                          </div>
+                          {hasPayslip(record.state) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={(e) => { e.stopPropagation(); handleDownloadPayslip(record.id) }}
+                              disabled={downloadingId === record.id}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M8 2v8M4 7l4 4 4-4M2 13h12"/>
+                              </svg>
+                              {downloadingId === record.id ? 'Downloading...' : 'Payslip'}
+                            </Button>
+                          )}
                         </div>
-                        {hasPayslip(record.state) && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={(e) => { e.stopPropagation(); handleDownloadPayslip(record.id) }}
-                            disabled={downloadingId === record.id}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                              <path d="M8 2v8M4 7l4 4 4-4M2 13h12"/>
-                            </svg>
-                            {downloadingId === record.id ? 'Downloading...' : 'Payslip'}
-                          </Button>
-                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* Payslips section */}
+          <div id="payslips" style={{ scrollMarginTop: '24px' }}>
+            <Card title="Payslips">
+              {workRecords.filter(w => hasPayslip(w.state)).length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '20px 0' }}>
+                  No payslips available yet
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {workRecords.filter(w => hasPayslip(w.state)).map(record => (
+                    <div key={record.id} style={{
+                      border: '0.5px solid #E5E7EB',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      background: '#fff',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 500, color: '#111827', marginBottom: '3px' }}>
+                          Week of {new Date(record.timesheets?.[0]?.weekStarting).toLocaleDateString('en-GB')}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '12px', color: '#6B7280' }}>
+                            Gross £{Number(record.timesheets?.[0]?.totalAmount ?? 0).toFixed(2)}
+                          </span>
+                          <StateBadge state={record.state} size="xs" />
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleDownloadPayslip(record.id)}
+                        disabled={downloadingId === record.id}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M8 2v8M4 7l4 4 4-4M2 13h12"/>
+                        </svg>
+                        {downloadingId === record.id ? 'Downloading...' : 'Download PDF'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
         </div>
 
         {/* Timeline panel */}

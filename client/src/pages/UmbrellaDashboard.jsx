@@ -65,46 +65,48 @@ export default function UmbrellaDashboard() {
   const totalNetPaid = workRecords.filter(w => w.state === 'COMPLETED').length
   const logs = auditData?.logs ?? []
 
-  const QueueCard = ({ title, records, buttonLabel, buttonVariant, onAction, isPending }) => (
-    <Card title={title}>
-      {records.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '16px 0' }}>
-          None at this stage
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {records.map(record => (
-            <div key={record.id} style={{
-              border: '0.5px solid #E5E7EB', borderRadius: '8px',
-              padding: '12px 14px', background: '#fff',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-            }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <StateBadge state={record.state} size="xs" />
-                </div>
-                <div style={{ fontSize: '13px', fontWeight: 500, color: '#111827' }}>
-                  {record.contractor?.user?.name ?? 'Contractor'}
-                </div>
-                {record.timesheets?.[0] && (
-                  <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px' }}>
-                    Gross £{Number(record.timesheets[0].totalAmount).toFixed(2)}
+  const QueueCard = ({ id, title, records, buttonLabel, buttonVariant, onAction, isPending }) => (
+    <div id={id} style={{ scrollMarginTop: '24px' }}>
+      <Card title={title}>
+        {records.length === 0 ? (
+          <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '16px 0' }}>
+            None at this stage
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {records.map(record => (
+              <div key={record.id} style={{
+                border: '0.5px solid #E5E7EB', borderRadius: '8px',
+                padding: '12px 14px', background: '#fff',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <StateBadge state={record.state} size="xs" />
                   </div>
-                )}
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#111827' }}>
+                    {record.contractor?.user?.name ?? 'Contractor'}
+                  </div>
+                  {record.timesheets?.[0] && (
+                    <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px' }}>
+                      Gross £{Number(record.timesheets[0].totalAmount).toFixed(2)}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant={buttonVariant}
+                  onClick={() => onAction(record.id)}
+                  disabled={isPending}
+                >
+                  {buttonLabel}
+                </Button>
               </div>
-              <Button
-                size="sm"
-                variant={buttonVariant}
-                onClick={() => onAction(record.id)}
-                disabled={isPending}
-              >
-                {buttonLabel}
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
   )
 
   return (
@@ -121,6 +123,7 @@ export default function UmbrellaDashboard() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
           <QueueCard
+            id="payroll"
             title="Ready for payroll"
             records={readyForPayroll}
             buttonLabel="Run payroll"
@@ -129,16 +132,19 @@ export default function UmbrellaDashboard() {
             isPending={payrollMutation.isPending}
           />
 
-          <QueueCard
-            title="Awaiting HMRC submission"
-            records={readyForCompliance}
-            buttonLabel="Submit to HMRC"
-            buttonVariant="teal"
-            onAction={(id) => complianceMutation.mutate(id)}
-            isPending={complianceMutation.isPending}
-          />
+          <div id="hmrc" style={{ scrollMarginTop: '24px' }}>
+            <QueueCard
+              title="Awaiting HMRC submission"
+              records={readyForCompliance}
+              buttonLabel="Submit to HMRC"
+              buttonVariant="teal"
+              onAction={(id) => complianceMutation.mutate(id)}
+              isPending={complianceMutation.isPending}
+            />
+          </div>
 
           <QueueCard
+            id="complete"
             title="Ready to complete"
             records={readyToComplete}
             buttonLabel="Mark complete"
@@ -197,9 +203,11 @@ export default function UmbrellaDashboard() {
         </div>
 
         {/* Activity feed */}
-        <Card title="Activity feed">
-          <ActivityFeed logs={logs} />
-        </Card>
+        <div id="audit" style={{ scrollMarginTop: '24px' }}>
+          <Card title="Activity feed">
+            <ActivityFeed logs={logs} />
+          </Card>
+        </div>
       </div>
     </Layout>
   )
