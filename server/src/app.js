@@ -14,7 +14,13 @@ import auditRoutes from './routes/audit.routes.js'
 const app = express()
 
 app.use(helmet())
-app.use(cors({ origin: 'http://localhost:5173' }))
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://agenticumbrella.vercel.app'
+  ],
+  credentials: true
+}))
 app.use(morgan('dev'))
 app.use(express.json())
 
